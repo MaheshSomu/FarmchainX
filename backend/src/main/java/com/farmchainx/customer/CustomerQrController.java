@@ -18,6 +18,8 @@ import java.util.Map;
 @PreAuthorize("hasRole('CUSTOMER')")
 public class CustomerQrController {
 
+    private static final String QR_BATCH_PREFIX = "farmchainx:batch:";
+
     private final JdbcTemplate jdbcTemplate;
 
     public CustomerQrController(JdbcTemplate jdbcTemplate) {
@@ -26,6 +28,14 @@ public class CustomerQrController {
 
     @GetMapping("/verify")
     public ResponseEntity<Map<String, Object>> verify(@RequestParam String batchId) {
+        String normalizedBatchId = normalizeBatchId(batchId);
+        if (normalizedBatchId.isEmpty()) {
+            return ResponseEntity.ok(Map.of(
+                    "verified", false,
+                    "message", "Batch not found"
+            ));
+        }
+
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                 """
                 select b.batch_code as batchCode, b.crop_name as cropName, b.seed_type as seedType, b.location,
@@ -38,7 +48,7 @@ public class CustomerQrController {
                 order by br.timestamp desc
                 limit 1
                 """,
-                batchId.trim()
+                normalizedBatchId
         );
 
         if (rows.isEmpty()) {
@@ -54,6 +64,22 @@ public class CustomerQrController {
                 ? "Authentic batch verified on blockchain"
                 : "Batch found but blockchain verification is pending");
         return ResponseEntity.ok(result);
+    }
+
+    private String normalizeBatchId(String batchId) {
+        if (batchId == null) {
+            return "";
+        }
+        String normalized = batchId.trim();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+
+        if (normalized.regionMatches(true, 0, QR_BATCH_PREFIX, 0, QR_BATCH_PREFIX.length())) {
+            return normalized.substring(QR_BATCH_PREFIX.length()).trim();
+        }
+
+        return normalized;
     }
 }
 
